@@ -18,7 +18,7 @@ export class ReviewWebviewManager {
     this.outputChannel = outputChannel;
   }
 
-  async show(jobId: number, commitDetails?: { message: string; diffstat: string }): Promise<void> {
+  async show(jobId: number): Promise<void> {
     let review: ReviewShowResponse;
     try {
       review = await this.client.showReview(jobId);
@@ -26,6 +26,11 @@ export class ReviewWebviewManager {
       const msg = err instanceof Error ? err.message : "Unknown error";
       vscode.window.showErrorMessage(`Failed to load review: ${msg}`);
       return;
+    }
+
+    let commitDetails: { message: string; diffstat: string } | undefined;
+    if (review.job.repo_path && review.job.git_ref) {
+      commitDetails = await this.client.gitCommitDetails(review.job.repo_path, review.job.git_ref);
     }
 
     if (this.panel) {
