@@ -105,7 +105,7 @@ export class RoboRevClient {
     args.push("--limit", String(options?.limit ?? 50));
 
     const output = await this.exec(args);
-    return JSON.parse(output) as ReviewJob[];
+    return JSON.parse(output) as ReviewJob[] ?? [];
   }
 
   async showReview(jobId: number): Promise<ReviewShowResponse> {
