@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import * as path from "node:path";
 import { RoboRevClient } from "./roborev-client.js";
 import { ReviewTreeProvider } from "./review-tree.js";
 import { ReviewWebviewManager } from "./review-webview.js";
@@ -9,19 +10,31 @@ export function activate(context: vscode.ExtensionContext): void {
   const outputChannel = vscode.window.createOutputChannel("RoboRev");
   context.subscriptions.push(outputChannel);
 
-  const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-  if (!workspaceRoot) {
+  const folders = vscode.workspace.workspaceFolders;
+  if (!folders || folders.length === 0) {
     return;
   }
 
+  const repoPaths = folders.map((f) => ({
+    name: path.basename(f.uri.fsPath),
+    path: f.uri.fsPath,
+  }));
+
   const client = new RoboRevClient(outputChannel);
-  const treeProvider = new ReviewTreeProvider(client, workspaceRoot);
+  const treeProvider = new ReviewTreeProvider(client, repoPaths);
 
   const treeView = vscode.window.createTreeView("roborevReviews", {
     treeDataProvider: treeProvider,
     showCollapseAll: true,
   });
   context.subscriptions.push(treeView);
+
+  const updateBadge = () => {
+    const count = treeProvider.activeCount;
+    treeView.badge = count > 0
+      ? { value: count, tooltip: `${count} review${count === 1 ? "" : "s"} need attention` }
+      : undefined;
+  };
 
   const webviewManager = new ReviewWebviewManager(
     client,
@@ -32,14 +45,16 @@ export function activate(context: vscode.ExtensionContext): void {
       } else if (action === "reopen") {
         await client.reopenReview(jobId);
       }
-      treeProvider.refresh();
+      await treeProvider.refresh();
+      updateBadge();
     }
   );
   context.subscriptions.push({ dispose: () => webviewManager.dispose() });
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("roborev.refresh", () => {
-      treeProvider.refresh();
+    vscode.commands.registerCommand("roborev.refresh", async () => {
+      await treeProvider.refresh();
+      updateBadge();
     })
   );
 
@@ -55,7 +70,8 @@ export function activate(context: vscode.ExtensionContext): void {
       async (item: { jobId?: number }) => {
         if (item.jobId) {
           await client.closeReview(item.jobId);
-          treeProvider.refresh();
+          await treeProvider.refresh();
+          updateBadge();
         }
       }
     )
@@ -67,7 +83,8 @@ export function activate(context: vscode.ExtensionContext): void {
       async (item: { jobId?: number }) => {
         if (item.jobId) {
           await client.reopenReview(item.jobId);
-          treeProvider.refresh();
+          await treeProvider.refresh();
+          updateBadge();
         }
       }
     )
@@ -84,7 +101,7 @@ export function activate(context: vscode.ExtensionContext): void {
       }
       const terminal = vscode.window.createTerminal({
         name: "RoboRev TUI",
-        cwd: workspaceRoot,
+        cwd: folders[0].uri.fsPath,
       });
       terminal.sendText("roborev tui");
       terminal.show();
@@ -92,21 +109,23 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   context.subscriptions.push(
-    vscode.window.onDidChangeWindowState((state) => {
+    vscode.window.onDidChangeWindowState(async (state) => {
       if (state.focused) {
-        treeProvider.refresh();
+        await treeProvider.refresh();
+        updateBadge();
       }
     })
   );
 
-  pollTimer = setInterval(() => {
+  pollTimer = setInterval(async () => {
     if (vscode.window.state.focused) {
-      treeProvider.refresh();
+      await treeProvider.refresh();
+      updateBadge();
     }
   }, 60_000);
   context.subscriptions.push({ dispose: () => clearInterval(pollTimer) });
 
-  treeProvider.refresh();
+  treeProvider.refresh().then(updateBadge);
 }
 
 export function deactivate(): void {

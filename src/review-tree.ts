@@ -23,6 +23,12 @@ const GROUP_ORDER: ReviewGroup[] = [
   "history",
 ];
 
+interface RepoData {
+  name: string;
+  path: string;
+  jobs: ReviewJob[];
+}
+
 export class ReviewTreeProvider
   implements vscode.TreeDataProvider<ReviewTreeItem>
 {
@@ -31,15 +37,24 @@ export class ReviewTreeProvider
   >();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
-  private jobs: ReviewJob[] = [];
+  private repos: RepoData[] = [];
   private client: RoboRevClient;
-  private repoPath: string;
+  private repoPaths: { name: string; path: string }[];
   private available = true;
   private errorMessage: string | null = null;
+  private _activeCount = 0;
 
-  constructor(client: RoboRevClient, repoPath: string) {
+  get activeCount(): number {
+    return this._activeCount;
+  }
+
+  constructor(client: RoboRevClient, repoPaths: { name: string; path: string }[]) {
     this.client = client;
-    this.repoPath = repoPath;
+    this.repoPaths = repoPaths;
+  }
+
+  private get multiRepo(): boolean {
+    return this.repos.length > 1;
   }
 
   async refresh(): Promise<void> {
@@ -47,16 +62,39 @@ export class ReviewTreeProvider
       this.available = await this.client.isAvailable();
       if (!this.available) {
         this.errorMessage = "RoboRev CLI not found — install from github.com/roborev-dev/roborev";
-        this.jobs = [];
+        this.repos = [];
+        this._activeCount = 0;
         this._onDidChangeTreeData.fire();
         return;
       }
       this.errorMessage = null;
-      this.jobs = await this.client.listReviews(this.repoPath);
+
+      const results = await Promise.all(
+        this.repoPaths.map(async (repo) => {
+          try {
+            const jobs = await this.client.listReviews(repo.path, { limit: 50 });
+            return { name: repo.name, path: repo.path, jobs };
+          } catch {
+            return { name: repo.name, path: repo.path, jobs: [] };
+          }
+        })
+      );
+
+      this.repos = results.filter((r) => r.jobs.length > 0);
+      this._activeCount = 0;
+      for (const repo of this.repos) {
+        for (const job of repo.jobs) {
+          const group = classifyReview(job);
+          if (group === "inProgress" || group === "needsAttention") {
+            this._activeCount++;
+          }
+        }
+      }
     } catch (err) {
       this.errorMessage =
         err instanceof Error ? err.message : "Failed to load reviews";
-      this.jobs = [];
+      this.repos = [];
+      this._activeCount = 0;
     }
     this._onDidChangeTreeData.fire();
   }
@@ -69,14 +107,28 @@ export class ReviewTreeProvider
     if (!element) {
       return this.getRootItems();
     }
+    if (element.repoName && !element.group) {
+      return this.getRepoGroups(element.repoName);
+    }
     if (element.group) {
-      return this.getGroupChildren(element.group);
+      const jobs = element.repoName
+        ? this.getRepoJobs(element.repoName)
+        : this.getAllJobs();
+      return this.getGroupChildren(jobs, element.group);
     }
     return [];
   }
 
+  private getAllJobs(): ReviewJob[] {
+    return this.repos.flatMap((r) => r.jobs);
+  }
+
+  private getRepoJobs(repoName: string): ReviewJob[] {
+    return this.repos.find((r) => r.name === repoName)?.jobs ?? [];
+  }
+
   private getRootItems(): ReviewTreeItem[] {
-    if (!this.available) {
+    if (!this.available || this.errorMessage) {
       const item = new ReviewTreeItem(
         this.errorMessage ?? "RoboRev CLI not found",
         vscode.TreeItemCollapsibleState.None
@@ -85,16 +137,7 @@ export class ReviewTreeProvider
       return [item];
     }
 
-    if (this.errorMessage) {
-      const item = new ReviewTreeItem(
-        this.errorMessage,
-        vscode.TreeItemCollapsibleState.None
-      );
-      item.iconPath = new vscode.ThemeIcon("warning");
-      return [item];
-    }
-
-    if (this.jobs.length === 0) {
+    if (this.repos.length === 0) {
       const item = new ReviewTreeItem(
         "No reviews found",
         vscode.TreeItemCollapsibleState.None
@@ -103,17 +146,46 @@ export class ReviewTreeProvider
       return [item];
     }
 
+    if (!this.multiRepo) {
+      return this.buildStatusGroups(this.repos[0].jobs);
+    }
+
+    return this.repos.map((repo) => {
+      const activeInRepo = repo.jobs.filter((j) => {
+        const g = classifyReview(j);
+        return g === "inProgress" || g === "needsAttention";
+      }).length;
+
+      const item = new ReviewTreeItem(
+        repo.name,
+        vscode.TreeItemCollapsibleState.Expanded
+      );
+      item.iconPath = new vscode.ThemeIcon("repo");
+      item.description = activeInRepo > 0
+        ? `${repo.jobs.length} reviews, ${activeInRepo} active`
+        : `${repo.jobs.length} reviews`;
+      item.repoName = repo.name;
+      return item;
+    });
+  }
+
+  private getRepoGroups(repoName: string): ReviewTreeItem[] {
+    const jobs = this.getRepoJobs(repoName);
+    return this.buildStatusGroups(jobs, repoName);
+  }
+
+  private buildStatusGroups(jobs: ReviewJob[], repoName?: string): ReviewTreeItem[] {
     const grouped = new Map<ReviewGroup, ReviewJob[]>();
     for (const group of GROUP_ORDER) {
       grouped.set(group, []);
     }
-    for (const job of this.jobs) {
+    for (const job of jobs) {
       const group = classifyReview(job);
       grouped.get(group)!.push(job);
     }
 
     return GROUP_ORDER.filter((g) => grouped.get(g)!.length > 0).map((g) => {
-      const jobs = grouped.get(g)!;
+      const groupJobs = grouped.get(g)!;
       const item = new ReviewTreeItem(
         GROUP_LABELS[g],
         g === "history"
@@ -121,14 +193,15 @@ export class ReviewTreeProvider
           : vscode.TreeItemCollapsibleState.Expanded
       );
       item.iconPath = GROUP_ICONS[g];
-      item.description = `(${jobs.length})`;
+      item.description = `(${groupJobs.length})`;
       item.group = g;
+      item.repoName = repoName;
       return item;
     });
   }
 
-  private getGroupChildren(group: ReviewGroup): ReviewTreeItem[] {
-    return this.jobs
+  private getGroupChildren(jobs: ReviewJob[], group: ReviewGroup): ReviewTreeItem[] {
+    return jobs
       .filter((j) => classifyReview(j) === group)
       .map((job) => {
         const sha = job.git_ref.slice(0, 7);
@@ -184,6 +257,7 @@ export class ReviewTreeProvider
 
 export class ReviewTreeItem extends vscode.TreeItem {
   group?: ReviewGroup;
+  repoName?: string;
   jobId?: number;
 }
 
