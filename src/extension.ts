@@ -1,10 +1,49 @@
 import * as vscode from "vscode";
 import * as path from "node:path";
+import * as fs from "node:fs";
 import { RoboRevClient } from "./roborev-client.js";
 import { ReviewTreeProvider } from "./review-tree.js";
 import { ReviewWebviewManager } from "./review-webview.js";
 
 let pollTimer: ReturnType<typeof setInterval> | undefined;
+
+function discoverRepos(
+  folders: readonly vscode.WorkspaceFolder[],
+  outputChannel: vscode.OutputChannel
+): { name: string; path: string }[] {
+  const repos: { name: string; path: string }[] = [];
+
+  for (const folder of folders) {
+    const root = folder.uri.fsPath;
+
+    if (isGitRepo(root)) {
+      repos.push({ name: path.basename(root), path: root });
+    }
+
+    // Always scan one level deep for child git repos
+    try {
+      const entries = fs.readdirSync(root, { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isDirectory() || entry.name.startsWith(".")) {
+          continue;
+        }
+        const childPath = path.join(root, entry.name);
+        if (isGitRepo(childPath)) {
+          repos.push({ name: entry.name, path: childPath });
+        }
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  outputChannel.appendLine(`discovered ${repos.length} repo(s): ${repos.map((r) => r.name).join(", ")}`);
+  return repos;
+}
+
+function isGitRepo(dir: string): boolean {
+  return fs.existsSync(path.join(dir, ".git"));
+}
 
 export function activate(context: vscode.ExtensionContext): void {
   const outputChannel = vscode.window.createOutputChannel("RoboRev");
@@ -15,10 +54,7 @@ export function activate(context: vscode.ExtensionContext): void {
     return;
   }
 
-  const repoPaths = folders.map((f) => ({
-    name: path.basename(f.uri.fsPath),
-    path: f.uri.fsPath,
-  }));
+  const repoPaths = discoverRepos(folders, outputChannel);
 
   const client = new RoboRevClient(outputChannel);
   const treeProvider = new ReviewTreeProvider(client, repoPaths);
