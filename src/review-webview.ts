@@ -32,14 +32,14 @@ export class ReviewWebviewManager {
     let commitDetails: { message: string; diffstat: string } | undefined;
     let changedFiles: ChangedFile[] = [];
     if (review.job.repo_path && review.job.git_ref) {
-      try {
-        [commitDetails, changedFiles] = await Promise.all([
-          this.client.gitCommitDetails(review.job.repo_path, review.job.git_ref),
-          this.client.gitDiffTree(review.job.repo_path, review.job.git_ref),
-        ]);
-      } catch (e) {
-        this.outputChannel.appendLine(`Failed to fetch commit details: ${e}`);
-      }
+      const [detailsResult, filesResult] = await Promise.allSettled([
+        this.client.gitCommitDetails(review.job.repo_path, review.job.git_ref),
+        this.client.gitDiffTree(review.job.repo_path, review.job.git_ref),
+      ]);
+      if (detailsResult.status === "fulfilled") commitDetails = detailsResult.value;
+      else this.outputChannel.appendLine(`Failed to fetch commit details: ${detailsResult.reason}`);
+      if (filesResult.status === "fulfilled") changedFiles = filesResult.value;
+      else this.outputChannel.appendLine(`Failed to fetch changed files: ${filesResult.reason}`);
     }
 
     if (this.panel) {
@@ -132,8 +132,9 @@ export class ReviewWebviewManager {
             oldPath: f.oldPath,
             status: f.status,
           }));
+          const safeStatus = ["A","M","D","R","C"].includes(f.status) ? f.status : "M";
           return `<a class="file-link" href="#" onclick="postMessage(JSON.parse(this.dataset.msg)); return false" data-msg="${data}">
-            <span class="file-status file-status-${f.status}">${f.status}</span>
+            <span class="file-status file-status-${safeStatus}">${escapeHtml(f.status)}</span>
             <span class="file-path">${escapeHtml(f.path)}</span>
           </a>`;
         }).join("\n")}
@@ -302,6 +303,7 @@ export class ReviewWebviewManager {
     <span class="header-field"><strong>Branch:</strong> ${job.branch}</span>
     <span class="header-field"><strong>Agent:</strong> ${job.agent}</span>
     <span class="header-field"><strong>Time:</strong> ${job.finished_at ?? job.enqueued_at}</span>
+    <span class="header-field"><strong>Job:</strong> ${escapeHtml(String(review.job_id))}</span>
   </div>
   <div class="actions">
     ${actionButton}
