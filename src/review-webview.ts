@@ -18,7 +18,7 @@ export class ReviewWebviewManager {
     this.outputChannel = outputChannel;
   }
 
-  async show(jobId: number): Promise<void> {
+  async show(jobId: number, commitDetails?: { message: string; diffstat: string }): Promise<void> {
     let review: ReviewShowResponse;
     try {
       review = await this.client.showReview(jobId);
@@ -55,14 +55,17 @@ export class ReviewWebviewManager {
     const sha = review.job.git_ref.slice(0, 7);
     const subject = review.job.commit_subject;
     this.panel.title = `roborev: ${sha} — ${subject}`;
-    this.panel.webview.html = this.buildHtml(review);
+    this.panel.webview.html = this.buildHtml(review, commitDetails);
   }
 
   dispose(): void {
     this.panel?.dispose();
   }
 
-  private buildHtml(review: ReviewShowResponse): string {
+  private buildHtml(
+    review: ReviewShowResponse,
+    commitDetails?: { message: string; diffstat: string }
+  ): string {
     const job = review.job;
     const fullSha = job.git_ref;
     const verdictLabel = review.closed
@@ -85,6 +88,14 @@ export class ReviewWebviewManager {
     const outputHtml = marked.parse(review.output || "No output available.", {
       async: false,
     }) as string;
+
+    const commitHtml = commitDetails
+      ? `<div class="commit-details">
+      <h3>Commit Details</h3>
+      <div class="commit-message">${escapeHtml(commitDetails.message)}</div>
+      ${commitDetails.diffstat ? `<div class="diffstat">${escapeHtml(commitDetails.diffstat)}</div>` : ""}
+    </div>`
+      : "";
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -178,6 +189,31 @@ export class ReviewWebviewManager {
       border-bottom: 1px solid var(--vscode-widget-border);
       padding-bottom: 4px;
     }
+    .commit-details {
+      margin-top: 24px;
+      padding-top: 16px;
+      border-top: 1px solid var(--vscode-widget-border);
+    }
+    .commit-details h3 {
+      margin: 0 0 8px 0;
+      font-size: 0.95em;
+      color: var(--vscode-editor-foreground);
+    }
+    .commit-message {
+      white-space: pre-wrap;
+      font-family: var(--vscode-editor-font-family);
+      font-size: var(--vscode-editor-font-size);
+      background: var(--vscode-textCodeBlock-background);
+      padding: 12px;
+      border-radius: 4px;
+      margin-bottom: 12px;
+    }
+    .diffstat {
+      font-family: var(--vscode-editor-font-family);
+      font-size: var(--vscode-editor-font-size);
+      color: var(--vscode-descriptionForeground);
+      white-space: pre;
+    }
   </style>
 </head>
 <body>
@@ -193,6 +229,7 @@ export class ReviewWebviewManager {
     <button class="btn btn-secondary" onclick="postMessage({ command: 'openTui' })">Open TUI</button>
   </div>
   <div class="output">${outputHtml}</div>
+  ${commitHtml}
   <script>
     const vscode = acquireVsCodeApi();
     function postMessage(msg) {
@@ -202,4 +239,12 @@ export class ReviewWebviewManager {
 </body>
 </html>`;
   }
+}
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }

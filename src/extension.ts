@@ -102,8 +102,13 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("roborev.showReview", (jobId: number) => {
-      webviewManager.show(jobId);
+    vscode.commands.registerCommand("roborev.showReview", async (jobId: number) => {
+      const review = await client.showReview(jobId).catch(() => null);
+      let commitDetails: { message: string; diffstat: string } | undefined;
+      if (review?.job.repo_path && review.job.git_ref) {
+        commitDetails = await client.gitCommitDetails(review.job.repo_path, review.job.git_ref);
+      }
+      webviewManager.show(jobId, commitDetails);
     })
   );
 
