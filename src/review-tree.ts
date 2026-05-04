@@ -26,6 +26,7 @@ const GROUP_ORDER: ReviewGroup[] = [
 interface RepoData {
   name: string;
   path: string;
+  branch: string | null;
   jobs: ReviewJob[];
 }
 
@@ -43,9 +44,14 @@ export class ReviewTreeProvider
   private available = true;
   private errorMessage: string | null = null;
   private _activeCount = 0;
+  private _hasInProgress = false;
 
   get activeCount(): number {
     return this._activeCount;
+  }
+
+  get hasInProgress(): boolean {
+    return this._hasInProgress;
   }
 
   constructor(client: RoboRevClient, repoPaths: { name: string; path: string }[]) {
@@ -54,7 +60,7 @@ export class ReviewTreeProvider
   }
 
   private get multiRepo(): boolean {
-    return this.repos.length > 1;
+    return this.repoPaths.length > 1;
   }
 
   async refresh(): Promise<void> {
@@ -71,21 +77,24 @@ export class ReviewTreeProvider
 
       const results = await Promise.all(
         this.repoPaths.map(async (repo) => {
-          try {
-            const jobs = await this.client.listReviews(repo.path, { limit: 50 });
-            return { name: repo.name, path: repo.path, jobs };
-          } catch {
-            return { name: repo.name, path: repo.path, jobs: [] };
-          }
+          const [jobs, branch] = await Promise.all([
+            this.client.listReviews(repo.path, { limit: 50 }).catch(() => []),
+            this.client.gitCurrentBranch(repo.path).catch(() => null),
+          ]);
+          return { name: repo.name, path: repo.path, branch, jobs };
         })
       );
 
-      this.repos = results.filter((r) => r.jobs.length > 0);
+      this.repos = results;
       this._activeCount = 0;
+      this._hasInProgress = false;
       for (const repo of this.repos) {
         for (const job of repo.jobs) {
           const group = classifyReview(job);
-          if (group === "inProgress" || group === "needsAttention") {
+          if (group === "inProgress") {
+            this._hasInProgress = true;
+            this._activeCount++;
+          } else if (group === "needsAttention") {
             this._activeCount++;
           }
         }
@@ -139,15 +148,27 @@ export class ReviewTreeProvider
 
     if (this.repos.length === 0) {
       const item = new ReviewTreeItem(
-        "No reviews found",
+        "No repos found",
         vscode.TreeItemCollapsibleState.None
       );
-      item.description = "Reviews appear after commits";
+      item.description = "Open a workspace with git repos";
       return [item];
     }
 
     if (!this.multiRepo) {
-      return this.buildStatusGroups(this.repos[0].jobs);
+      const repo = this.repos[0];
+      const jobs = repo?.jobs ?? [];
+      if (jobs.length === 0) {
+        const item = new ReviewTreeItem(
+          "No reviews yet",
+          vscode.TreeItemCollapsibleState.None
+        );
+        item.description = repo?.branch
+          ? `on ${repo.branch} — reviews appear after commits`
+          : "Reviews appear after commits";
+        return [item];
+      }
+      return this.buildStatusGroups(jobs);
     }
 
     return this.repos.map((repo) => {
@@ -156,14 +177,24 @@ export class ReviewTreeProvider
         return g === "inProgress" || g === "needsAttention";
       }).length;
 
+      const prefix = repo.branch ? `${repo.branch} · ` : "";
+      let status: string;
+      if (repo.jobs.length === 0) {
+        status = "no reviews";
+      } else if (activeInRepo > 0) {
+        status = `${repo.jobs.length} reviews, ${activeInRepo} active`;
+      } else {
+        status = `${repo.jobs.length} reviews`;
+      }
+
       const item = new ReviewTreeItem(
         repo.name,
-        vscode.TreeItemCollapsibleState.Expanded
+        repo.jobs.length > 0
+          ? vscode.TreeItemCollapsibleState.Expanded
+          : vscode.TreeItemCollapsibleState.None
       );
       item.iconPath = new vscode.ThemeIcon("repo");
-      item.description = activeInRepo > 0
-        ? `${repo.jobs.length} reviews, ${activeInRepo} active`
-        : `${repo.jobs.length} reviews`;
+      item.description = `${prefix}${status}`;
       item.repoName = repo.name;
       return item;
     });

@@ -153,19 +153,31 @@ export function activate(context: vscode.ExtensionContext): void {
     })
   );
 
-  pollTimer = setInterval(async () => {
-    if (vscode.window.state.focused) {
-      await treeProvider.refresh();
-      updateBadge();
-    }
-  }, 60_000);
-  context.subscriptions.push({ dispose: () => clearInterval(pollTimer) });
+  const POLL_FAST = 5_000;
+  const POLL_IDLE = 60_000;
+  let pollDisposed = false;
+
+  const schedulePoll = () => {
+    if (pollDisposed) return;
+    pollTimer = setTimeout(async () => {
+      try {
+        if (vscode.window.state.focused) {
+          await treeProvider.refresh();
+          updateBadge();
+        }
+      } finally {
+        schedulePoll();
+      }
+    }, treeProvider.hasInProgress ? POLL_FAST : POLL_IDLE);
+  };
+  schedulePoll();
+  context.subscriptions.push({ dispose: () => { pollDisposed = true; clearTimeout(pollTimer); } });
 
   treeProvider.refresh().then(updateBadge);
 }
 
 export function deactivate(): void {
   if (pollTimer) {
-    clearInterval(pollTimer);
+    clearTimeout(pollTimer);
   }
 }

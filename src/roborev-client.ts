@@ -108,6 +108,18 @@ export class RoboRevClient {
     return JSON.parse(output) as ReviewJob[] ?? [];
   }
 
+  gitCurrentBranch(repoPath: string): Promise<string | null> {
+    return new Promise((resolve) => {
+      execFile("git", ["-C", repoPath, "branch", "--show-current"], { timeout: 5_000 }, (error, stdout) => {
+        if (error) {
+          resolve(null);
+          return;
+        }
+        resolve(stdout.trim() || null);
+      });
+    });
+  }
+
   async showReview(jobId: number): Promise<ReviewShowResponse> {
     const output = await this.exec(["show", "--json", "--job", String(jobId)]);
     return JSON.parse(output) as ReviewShowResponse;
