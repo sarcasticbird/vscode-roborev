@@ -135,11 +135,18 @@ export class RoboRevClient {
           for (const line of stdout.trim().split("\n")) {
             if (!line) continue;
             const [status, ...pathParts] = line.split("\t");
-            const filePath = pathParts.join("\t");
-            if (status && filePath) {
+            if (!status || pathParts.length === 0) continue;
+            const statusChar = status.charAt(0) as ChangedFile["status"];
+            if (statusChar === "R" || statusChar === "C") {
               files.push({
-                status: status.charAt(0) as ChangedFile["status"],
-                path: filePath,
+                status: statusChar,
+                path: pathParts[pathParts.length - 1],
+                oldPath: pathParts[0],
+              });
+            } else {
+              files.push({
+                status: statusChar,
+                path: pathParts[0],
               });
             }
           }
@@ -170,16 +177,20 @@ export class RoboRevClient {
     return new Promise((resolve) => {
       execFile(
         "git",
-        ["-C", repoPath, "show", "--stat", "--format=%B", sha],
+        ["-C", repoPath, "show", "--stat", "--format=%B%x00", sha],
         { timeout: 5_000 },
         (error, stdout) => {
           if (error) {
             resolve({ message: "", diffstat: "" });
             return;
           }
-          const parts = stdout.split("\n\n");
-          const message = parts[0]?.trim() ?? "";
-          const diffstat = parts.slice(1).join("\n\n").trim();
+          const nulIdx = stdout.indexOf("\0");
+          if (nulIdx === -1) {
+            resolve({ message: stdout.trim(), diffstat: "" });
+            return;
+          }
+          const message = stdout.slice(0, nulIdx).trim();
+          const diffstat = stdout.slice(nulIdx + 1).trim();
           resolve({ message, diffstat });
         }
       );

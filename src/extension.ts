@@ -103,7 +103,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     vscode.commands.registerCommand("roborev.showReview", (jobId: number) => {
-      webviewManager.show(jobId);
+      return webviewManager.show(jobId);
     })
   );
 

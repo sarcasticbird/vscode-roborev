@@ -25,7 +25,9 @@ export class GitContentProvider implements vscode.TextDocumentContentProvider {
 }
 
 export function buildGitUri(repoPath: string, sha: string, filePath: string): vscode.Uri {
-  return vscode.Uri.parse(
-    `${GIT_SCHEME}:${filePath}?repo=${encodeURIComponent(repoPath)}&sha=${encodeURIComponent(sha)}`
-  );
+  return vscode.Uri.from({
+    scheme: GIT_SCHEME,
+    path: filePath,
+    query: `repo=${encodeURIComponent(repoPath)}&sha=${encodeURIComponent(sha)}`,
+  });
 }

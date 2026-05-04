@@ -30,7 +30,11 @@ export class ReviewWebviewManager {
 
     let commitDetails: { message: string; diffstat: string } | undefined;
     if (review.job.repo_path && review.job.git_ref) {
-      commitDetails = await this.client.gitCommitDetails(review.job.repo_path, review.job.git_ref);
+      try {
+        commitDetails = await this.client.gitCommitDetails(review.job.repo_path, review.job.git_ref);
+      } catch (e) {
+        this.outputChannel.appendLine(`Failed to fetch commit details: ${e}`);
+      }
     }
 
     if (this.panel) {

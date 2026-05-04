@@ -91,4 +91,5 @@ export function classifyReview(job: ReviewJob): ReviewGroup {
 export interface ChangedFile {
   status: "A" | "M" | "D" | "R" | "C";
   path: string;
+  oldPath?: string;
 }

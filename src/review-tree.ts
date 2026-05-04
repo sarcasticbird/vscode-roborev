@@ -314,11 +314,12 @@ export class ChangedFileItem extends vscode.TreeItem {
     this.contextValue = "changedFile";
 
     const parentSha = `${sha}~1`;
+    const leftPath = file.oldPath ?? file.path;
     const leftUri = file.status === "A"
-      ? vscode.Uri.parse(`roborev-git:${file.path}?repo=${encodeURIComponent(repoPath)}&sha=empty`)
-      : buildGitUri(repoPath, parentSha, file.path);
+      ? buildGitUri(repoPath, "empty", file.path)
+      : buildGitUri(repoPath, parentSha, leftPath);
     const rightUri = file.status === "D"
-      ? vscode.Uri.parse(`roborev-git:${file.path}?repo=${encodeURIComponent(repoPath)}&sha=empty`)
+      ? buildGitUri(repoPath, "empty", file.path)
       : buildGitUri(repoPath, sha, file.path);
 
     this.command = {
