@@ -2,8 +2,14 @@ import { execFile } from "node:child_process";
 import * as vscode from "vscode";
 import type { ReviewJob, ReviewShowResponse } from "./types.js";
 
+const HOMEBREW_PATHS = [
+  "/opt/homebrew/bin/roborev",
+  "/usr/local/bin/roborev",
+];
+
 export class RoboRevClient {
   private outputChannel: vscode.OutputChannel;
+  private resolvedBinary: string | null = null;
 
   constructor(outputChannel: vscode.OutputChannel) {
     this.outputChannel = outputChannel;
@@ -11,11 +17,66 @@ export class RoboRevClient {
 
   async isAvailable(): Promise<boolean> {
     try {
-      await this.exec(["--version"]);
+      this.resolvedBinary = await this.findBinary();
+      if (!this.resolvedBinary) {
+        this.outputChannel.appendLine("binary resolution failed: roborev not found");
+        this.outputChannel.appendLine(`process.env.PATH: ${process.env.PATH}`);
+        return false;
+      }
+      await this.exec(["version"]);
       return true;
-    } catch {
+    } catch (err) {
+      this.outputChannel.appendLine(`isAvailable error: ${err}`);
       return false;
     }
+  }
+
+  private async findBinary(): Promise<string | null> {
+    if (this.resolvedBinary) {
+      return this.resolvedBinary;
+    }
+
+    const shell = process.env.SHELL ?? "/bin/zsh";
+    this.outputChannel.appendLine(`attempting shell resolve via: ${shell} -l -c "which roborev"`);
+    try {
+      const path = await this.shellResolve("roborev");
+      if (path) {
+        this.outputChannel.appendLine(`resolved roborev at: ${path}`);
+        return path;
+      }
+      this.outputChannel.appendLine("shell resolve returned empty");
+    } catch (err) {
+      this.outputChannel.appendLine(`shell resolve failed: ${err}`);
+    }
+
+    const { accessSync, constants } = await import("node:fs");
+    for (const candidate of HOMEBREW_PATHS) {
+      this.outputChannel.appendLine(`checking: ${candidate}`);
+      try {
+        accessSync(candidate, constants.X_OK);
+        this.outputChannel.appendLine(`found roborev at: ${candidate}`);
+        return candidate;
+      } catch (err) {
+        this.outputChannel.appendLine(`  not found: ${err}`);
+        continue;
+      }
+    }
+
+    return null;
+  }
+
+  private shellResolve(binary: string): Promise<string | null> {
+    return new Promise((resolve) => {
+      const shell = process.env.SHELL ?? "/bin/zsh";
+      execFile(shell, ["-l", "-c", `which ${binary}`], { timeout: 5_000 }, (error, stdout) => {
+        if (error) {
+          resolve(null);
+          return;
+        }
+        const path = stdout.trim();
+        resolve(path || null);
+      });
+    });
   }
 
   async listReviews(
@@ -62,10 +123,11 @@ export class RoboRevClient {
 
   private exec(args: string[]): Promise<string> {
     return new Promise((resolve, reject) => {
+      const binary = this.resolvedBinary ?? "roborev";
       const timeout = args[0] === "close" ? 10_000 : 5_000;
-      this.outputChannel.appendLine(`roborev ${args.join(" ")}`);
+      this.outputChannel.appendLine(`${binary} ${args.join(" ")}`);
 
-      execFile("roborev", args, { timeout }, (error, stdout, stderr) => {
+      execFile(binary, args, { timeout }, (error, stdout, stderr) => {
         if (error) {
           this.outputChannel.appendLine(`error: ${error.message}`);
           if (stderr) {
