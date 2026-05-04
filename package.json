@@ -1,7 +1,7 @@
 {
   "name": "vscode-roborev",
-  "displayName": "RoboRev",
-  "description": "RoboRev code review findings in VS Code",
+  "displayName": "roborev",
+  "description": "roborev code review findings in VS Code",
   "version": "0.1.0",
   "publisher": "sarcasticbird",
   "engines": {
@@ -19,7 +19,7 @@
       "activitybar": [
         {
           "id": "roborev",
-          "title": "RoboRev",
+          "title": "roborev",
           "icon": "media/roborev-icon.svg"
         }
       ]
@@ -35,25 +35,25 @@
     "commands": [
       {
         "command": "roborev.refresh",
-        "title": "RoboRev: Refresh Reviews",
+        "title": "roborev: Refresh Reviews",
         "icon": "$(refresh)"
       },
       {
         "command": "roborev.close",
-        "title": "RoboRev: Close Review"
+        "title": "roborev: Close Review"
       },
       {
         "command": "roborev.reopen",
-        "title": "RoboRev: Reopen Review"
+        "title": "roborev: Reopen Review"
       },
       {
         "command": "roborev.openTui",
-        "title": "RoboRev: Open TUI",
+        "title": "roborev: Open TUI",
         "icon": "$(terminal)"
       },
       {
         "command": "roborev.showReview",
-        "title": "RoboRev: Show Review"
+        "title": "roborev: Show Review"
       }
     ],
     "menus": {
@@ -87,7 +87,7 @@
     "viewsWelcome": [
       {
         "view": "roborevReviews",
-        "contents": "No RoboRev reviews found.\n\nRun `roborev init` in your project to enable automatic code reviews.\n\n[Open Terminal](command:workbench.action.terminal.new)"
+        "contents": "No roborev reviews found.\n\nRun `roborev init` in your project to enable automatic code reviews.\n\n[Open Terminal](command:workbench.action.terminal.new)"
       }
     ]
   },

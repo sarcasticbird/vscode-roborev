@@ -67,7 +67,7 @@ export class ReviewTreeProvider
     try {
       this.available = await this.client.isAvailable();
       if (!this.available) {
-        this.errorMessage = "RoboRev CLI not found — install from github.com/roborev-dev/roborev";
+        this.errorMessage = "roborev CLI not found — install from github.com/roborev-dev/roborev";
         this.repos = [];
         this._activeCount = 0;
         this._onDidChangeTreeData.fire();
@@ -139,7 +139,7 @@ export class ReviewTreeProvider
   private getRootItems(): ReviewTreeItem[] {
     if (!this.available || this.errorMessage) {
       const item = new ReviewTreeItem(
-        this.errorMessage ?? "RoboRev CLI not found",
+        this.errorMessage ?? "roborev CLI not found",
         vscode.TreeItemCollapsibleState.None
       );
       item.iconPath = new vscode.ThemeIcon("warning");
