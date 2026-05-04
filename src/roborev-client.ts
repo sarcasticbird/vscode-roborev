@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import * as vscode from "vscode";
-import type { ReviewJob, ReviewShowResponse } from "./types.js";
+import type { ReviewJob, ReviewShowResponse, ChangedFile } from "./types.js";
 
 const HOMEBREW_PATHS = [
   "/opt/homebrew/bin/roborev",
@@ -117,6 +117,72 @@ export class RoboRevClient {
         }
         resolve(stdout.trim() || null);
       });
+    });
+  }
+
+  gitDiffTree(repoPath: string, sha: string): Promise<ChangedFile[]> {
+    return new Promise((resolve) => {
+      execFile(
+        "git",
+        ["-C", repoPath, "diff-tree", "--no-commit-id", "-r", "--name-status", sha],
+        { timeout: 5_000 },
+        (error, stdout) => {
+          if (error) {
+            resolve([]);
+            return;
+          }
+          const files: ChangedFile[] = [];
+          for (const line of stdout.trim().split("\n")) {
+            if (!line) continue;
+            const [status, ...pathParts] = line.split("\t");
+            const filePath = pathParts.join("\t");
+            if (status && filePath) {
+              files.push({
+                status: status.charAt(0) as ChangedFile["status"],
+                path: filePath,
+              });
+            }
+          }
+          resolve(files);
+        }
+      );
+    });
+  }
+
+  gitShowFile(repoPath: string, sha: string, filePath: string): Promise<string> {
+    return new Promise((resolve) => {
+      execFile(
+        "git",
+        ["-C", repoPath, "show", `${sha}:${filePath}`],
+        { timeout: 5_000, maxBuffer: 5 * 1024 * 1024 },
+        (error, stdout) => {
+          if (error) {
+            resolve("");
+            return;
+          }
+          resolve(stdout);
+        }
+      );
+    });
+  }
+
+  gitCommitDetails(repoPath: string, sha: string): Promise<{ message: string; diffstat: string }> {
+    return new Promise((resolve) => {
+      execFile(
+        "git",
+        ["-C", repoPath, "show", "--stat", "--format=%B", sha],
+        { timeout: 5_000 },
+        (error, stdout) => {
+          if (error) {
+            resolve({ message: "", diffstat: "" });
+            return;
+          }
+          const parts = stdout.split("\n\n");
+          const message = parts[0]?.trim() ?? "";
+          const diffstat = parts.slice(1).join("\n\n").trim();
+          resolve({ message, diffstat });
+        }
+      );
     });
   }
 
