@@ -1,6 +1,8 @@
 import * as vscode from "vscode";
+import * as path from "node:path";
 import type { RoboRevClient } from "./roborev-client.js";
-import { type ReviewJob, type ReviewGroup, classifyReview } from "./types.js";
+import { type ReviewJob, type ReviewGroup, type ChangedFile, classifyReview } from "./types.js";
+import { buildGitUri } from "./git-content-provider.js";
 
 const GROUP_LABELS: Record<ReviewGroup, string> = {
   inProgress: "In Progress",
@@ -31,10 +33,10 @@ interface RepoData {
 }
 
 export class ReviewTreeProvider
-  implements vscode.TreeDataProvider<ReviewTreeItem>
+  implements vscode.TreeDataProvider<ReviewTreeItem | ChangedFileItem>
 {
   private _onDidChangeTreeData = new vscode.EventEmitter<
-    ReviewTreeItem | undefined | null | void
+    ReviewTreeItem | ChangedFileItem | undefined | null | void
   >();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
@@ -104,13 +106,16 @@ export class ReviewTreeProvider
     this._onDidChangeTreeData.fire();
   }
 
-  getTreeItem(element: ReviewTreeItem): vscode.TreeItem {
+  getTreeItem(element: ReviewTreeItem | ChangedFileItem): vscode.TreeItem {
     return element;
   }
 
-  getChildren(element?: ReviewTreeItem): ReviewTreeItem[] {
+  async getChildren(element?: ReviewTreeItem | ChangedFileItem): Promise<(ReviewTreeItem | ChangedFileItem)[]> {
     if (!element) {
       return this.getRootItems();
+    }
+    if (element instanceof ChangedFileItem) {
+      return [];
     }
     if (element.repoName && !element.group) {
       return this.getRepoGroups(element.repoName);
@@ -120,6 +125,9 @@ export class ReviewTreeProvider
         ? this.getRepoJobs(element.repoName)
         : this.getAllJobs();
       return this.getGroupChildren(jobs, element.group);
+    }
+    if (element.jobId && element.gitRef && element.repoPath) {
+      return this.getChangedFiles(element);
     }
     return [];
   }
@@ -211,6 +219,18 @@ export class ReviewTreeProvider
     });
   }
 
+  private async getChangedFiles(element: ReviewTreeItem): Promise<ChangedFileItem[]> {
+    if (!element.gitRef || !element.repoPath) return [];
+
+    if (!element.cachedFiles) {
+      element.cachedFiles = await this.client.gitDiffTree(element.repoPath, element.gitRef);
+    }
+
+    return element.cachedFiles.map(
+      (file) => new ChangedFileItem(file, element.repoPath!, element.gitRef!)
+    );
+  }
+
   private getGroupChildren(jobs: ReviewJob[], group: ReviewGroup): ReviewTreeItem[] {
     return jobs
       .filter((j) => classifyReview(j) === group)
@@ -223,7 +243,7 @@ export class ReviewTreeProvider
 
         const item = new ReviewTreeItem(
           `${sha} — ${subject}`,
-          vscode.TreeItemCollapsibleState.None
+          vscode.TreeItemCollapsibleState.Collapsed
         );
         item.description = `${job.agent}  ${relativeTime(job.enqueued_at)}`;
         item.tooltip = new vscode.MarkdownString(
@@ -232,6 +252,8 @@ export class ReviewTreeProvider
             `**Type:** ${job.job_type} (${job.review_type})`
         );
         item.jobId = job.id;
+        item.gitRef = job.git_ref;
+        item.repoPath = job.repo_path;
 
         item.contextValue = job.closed ? "reviewClosed" : "reviewOpen";
 
@@ -270,6 +292,56 @@ export class ReviewTreeItem extends vscode.TreeItem {
   group?: ReviewGroup;
   repoName?: string;
   jobId?: number;
+  gitRef?: string;
+  repoPath?: string;
+  cachedFiles?: ChangedFile[];
+}
+
+export class ChangedFileItem extends vscode.TreeItem {
+  constructor(
+    file: ChangedFile,
+    repoPath: string,
+    sha: string
+  ) {
+    const basename = path.basename(file.path);
+    const dirname = path.dirname(file.path);
+
+    super(basename, vscode.TreeItemCollapsibleState.None);
+
+    this.description = dirname === "." ? "" : dirname;
+    this.resourceUri = vscode.Uri.file(path.join(repoPath, file.path));
+    this.iconPath = ChangedFileItem.statusIcon(file.status);
+    this.contextValue = "changedFile";
+
+    const parentSha = `${sha}~1`;
+    const leftUri = file.status === "A"
+      ? vscode.Uri.parse(`roborev-git:${file.path}?repo=${encodeURIComponent(repoPath)}&sha=empty`)
+      : buildGitUri(repoPath, parentSha, file.path);
+    const rightUri = file.status === "D"
+      ? vscode.Uri.parse(`roborev-git:${file.path}?repo=${encodeURIComponent(repoPath)}&sha=empty`)
+      : buildGitUri(repoPath, sha, file.path);
+
+    this.command = {
+      command: "vscode.diff",
+      title: "Show Diff",
+      arguments: [leftUri, rightUri, `${basename} (${sha.slice(0, 7)})`],
+    };
+  }
+
+  private static statusIcon(status: ChangedFile["status"]): vscode.ThemeIcon {
+    switch (status) {
+      case "A":
+        return new vscode.ThemeIcon("diff-added", new vscode.ThemeColor("gitDecoration.addedResourceForeground"));
+      case "D":
+        return new vscode.ThemeIcon("diff-removed", new vscode.ThemeColor("gitDecoration.deletedResourceForeground"));
+      case "M":
+        return new vscode.ThemeIcon("diff-modified", new vscode.ThemeColor("gitDecoration.modifiedResourceForeground"));
+      case "R":
+        return new vscode.ThemeIcon("diff-renamed", new vscode.ThemeColor("gitDecoration.renamedResourceForeground"));
+      case "C":
+        return new vscode.ThemeIcon("diff-modified", new vscode.ThemeColor("gitDecoration.modifiedResourceForeground"));
+    }
+  }
 }
 
 function relativeTime(isoDate: string): string {
