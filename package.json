@@ -1,0 +1,96 @@
+{
+  "name": "vscode-roborev",
+  "displayName": "RoboRev",
+  "description": "RoboRev code review findings in VS Code",
+  "version": "0.1.0",
+  "publisher": "sarcasticbird",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "workspaceContains:.roborev-id"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "roborev",
+          "title": "RoboRev",
+          "icon": "media/roborev-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "roborev": [
+        {
+          "id": "roborevReviews",
+          "name": "Reviews"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "roborev.refresh",
+        "title": "RoboRev: Refresh Reviews",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "roborev.close",
+        "title": "RoboRev: Close Review"
+      },
+      {
+        "command": "roborev.reopen",
+        "title": "RoboRev: Reopen Review"
+      },
+      {
+        "command": "roborev.openTui",
+        "title": "RoboRev: Open TUI"
+      },
+      {
+        "command": "roborev.showReview",
+        "title": "RoboRev: Show Review"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "roborev.refresh",
+          "when": "view == roborevReviews",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "roborev.close",
+          "when": "view == roborevReviews && viewItem == reviewOpen"
+        },
+        {
+          "command": "roborev.reopen",
+          "when": "view == roborevReviews && viewItem == reviewClosed"
+        },
+        {
+          "command": "roborev.openTui",
+          "when": "view == roborevReviews && viewItem =~ /^review/"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.config.mjs",
+    "watch": "node esbuild.config.mjs --watch",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.0.0",
+    "esbuild": "^0.25.12",
+    "typescript": "^5.7.0"
+  },
+  "dependencies": {
+    "marked": "^15.0.0"
+  }
+}

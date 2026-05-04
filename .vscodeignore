@@ -1,0 +1,7 @@
+src/**
+docs/**
+node_modules/**
+.flox/**
+.git/**
+tsconfig.json
+esbuild.config.mjs
