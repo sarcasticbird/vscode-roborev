@@ -87,3 +87,9 @@ export function classifyReview(job: ReviewJob): ReviewGroup {
   }
   return "history";
 }
+
+export interface ChangedFile {
+  status: "A" | "M" | "D" | "R" | "C";
+  path: string;
+  oldPath?: string;
+}

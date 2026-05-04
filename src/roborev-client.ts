@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import * as vscode from "vscode";
-import type { ReviewJob, ReviewShowResponse } from "./types.js";
+import type { ReviewJob, ReviewShowResponse, ChangedFile } from "./types.js";
 
 const HOMEBREW_PATHS = [
   "/opt/homebrew/bin/roborev",
@@ -117,6 +117,83 @@ export class RoboRevClient {
         }
         resolve(stdout.trim() || null);
       });
+    });
+  }
+
+  gitDiffTree(repoPath: string, sha: string): Promise<ChangedFile[]> {
+    return new Promise((resolve) => {
+      execFile(
+        "git",
+        ["-C", repoPath, "diff-tree", "--no-commit-id", "-r", "--name-status", sha],
+        { timeout: 5_000 },
+        (error, stdout) => {
+          if (error) {
+            resolve([]);
+            return;
+          }
+          const files: ChangedFile[] = [];
+          for (const line of stdout.trim().split("\n")) {
+            if (!line) continue;
+            const [status, ...pathParts] = line.split("\t");
+            if (!status || pathParts.length === 0) continue;
+            const statusChar = status.charAt(0) as ChangedFile["status"];
+            if (statusChar === "R" || statusChar === "C") {
+              files.push({
+                status: statusChar,
+                path: pathParts[pathParts.length - 1],
+                oldPath: pathParts[0],
+              });
+            } else {
+              files.push({
+                status: statusChar,
+                path: pathParts[0],
+              });
+            }
+          }
+          resolve(files);
+        }
+      );
+    });
+  }
+
+  gitShowFile(repoPath: string, sha: string, filePath: string): Promise<string> {
+    return new Promise((resolve) => {
+      execFile(
+        "git",
+        ["-C", repoPath, "show", `${sha}:${filePath}`],
+        { timeout: 5_000, maxBuffer: 5 * 1024 * 1024 },
+        (error, stdout) => {
+          if (error) {
+            resolve("");
+            return;
+          }
+          resolve(stdout);
+        }
+      );
+    });
+  }
+
+  gitCommitDetails(repoPath: string, sha: string): Promise<{ message: string; diffstat: string }> {
+    return new Promise((resolve) => {
+      execFile(
+        "git",
+        ["-C", repoPath, "show", "--stat", "--format=%B%x00", sha],
+        { timeout: 5_000 },
+        (error, stdout) => {
+          if (error) {
+            resolve({ message: "", diffstat: "" });
+            return;
+          }
+          const nulIdx = stdout.indexOf("\0");
+          if (nulIdx === -1) {
+            resolve({ message: stdout.trim(), diffstat: "" });
+            return;
+          }
+          const message = stdout.slice(0, nulIdx).trim();
+          const diffstat = stdout.slice(nulIdx + 1).trim();
+          resolve({ message, diffstat });
+        }
+      );
     });
   }
 

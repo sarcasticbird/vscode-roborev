@@ -1,7 +1,8 @@
 import * as vscode from "vscode";
 import { marked } from "marked";
 import type { RoboRevClient } from "./roborev-client.js";
-import type { ReviewShowResponse } from "./types.js";
+import type { ReviewShowResponse, ChangedFile } from "./types.js";
+import { buildGitUri } from "./git-content-provider.js";
 
 export class ReviewWebviewManager {
   private panel: vscode.WebviewPanel | undefined;
@@ -28,6 +29,19 @@ export class ReviewWebviewManager {
       return;
     }
 
+    let commitDetails: { message: string; diffstat: string } | undefined;
+    let changedFiles: ChangedFile[] = [];
+    if (review.job.repo_path && review.job.git_ref) {
+      const [detailsResult, filesResult] = await Promise.allSettled([
+        this.client.gitCommitDetails(review.job.repo_path, review.job.git_ref),
+        this.client.gitDiffTree(review.job.repo_path, review.job.git_ref),
+      ]);
+      if (detailsResult.status === "fulfilled") commitDetails = detailsResult.value;
+      else this.outputChannel.appendLine(`Failed to fetch commit details: ${detailsResult.reason}`);
+      if (filesResult.status === "fulfilled") changedFiles = filesResult.value;
+      else this.outputChannel.appendLine(`Failed to fetch changed files: ${filesResult.reason}`);
+    }
+
     if (this.panel) {
       this.panel.reveal(vscode.ViewColumn.One);
     } else {
@@ -49,20 +63,37 @@ export class ReviewWebviewManager {
         if (msg.command === "openTui") {
           vscode.commands.executeCommand("roborev.openTui");
         }
+        if (msg.command === "openDiff") {
+          const { repoPath, sha, filePath, oldPath, status } = msg;
+          const parentSha = `${sha}~1`;
+          const leftPath = oldPath ?? filePath;
+          const leftUri = status === "A"
+            ? buildGitUri(repoPath, "empty", filePath)
+            : buildGitUri(repoPath, parentSha, leftPath);
+          const rightUri = status === "D"
+            ? buildGitUri(repoPath, "empty", filePath)
+            : buildGitUri(repoPath, sha, filePath);
+          const basename = filePath.split("/").pop() ?? filePath;
+          vscode.commands.executeCommand("vscode.diff", leftUri, rightUri, `${basename} (${sha.slice(0, 7)})`);
+        }
       });
     }
 
     const sha = review.job.git_ref.slice(0, 7);
     const subject = review.job.commit_subject;
     this.panel.title = `roborev: ${sha} — ${subject}`;
-    this.panel.webview.html = this.buildHtml(review);
+    this.panel.webview.html = this.buildHtml(review, commitDetails, changedFiles);
   }
 
   dispose(): void {
     this.panel?.dispose();
   }
 
-  private buildHtml(review: ReviewShowResponse): string {
+  private buildHtml(
+    review: ReviewShowResponse,
+    commitDetails?: { message: string; diffstat: string },
+    changedFiles: ChangedFile[] = []
+  ): string {
     const job = review.job;
     const fullSha = job.git_ref;
     const verdictLabel = review.closed
@@ -85,6 +116,38 @@ export class ReviewWebviewManager {
     const outputHtml = marked.parse(review.output || "No output available.", {
       async: false,
     }) as string;
+
+    const repoPath = review.job.repo_path;
+    const gitRef = review.job.git_ref;
+
+    const fileListHtml = changedFiles.length > 0
+      ? `<div class="file-list">
+        <h4>Files changed (${changedFiles.length})</h4>
+        ${changedFiles.map((f) => {
+          const data = escapeHtml(JSON.stringify({
+            command: "openDiff",
+            repoPath,
+            sha: gitRef,
+            filePath: f.path,
+            oldPath: f.oldPath,
+            status: f.status,
+          }));
+          const safeStatus = ["A","M","D","R","C"].includes(f.status) ? f.status : "M";
+          return `<a class="file-link" href="#" onclick="postMessage(JSON.parse(this.dataset.msg)); return false" data-msg="${data}">
+            <span class="file-status file-status-${safeStatus}">${escapeHtml(f.status)}</span>
+            <span class="file-path">${escapeHtml(f.path)}</span>
+          </a>`;
+        }).join("\n")}
+      </div>`
+      : "";
+
+    const commitHtml = commitDetails || fileListHtml
+      ? `<div class="commit-details">
+      <h3>Commit Details</h3>
+      ${commitDetails ? `<div class="commit-message">${escapeHtml(commitDetails.message)}</div>` : ""}
+      ${fileListHtml}
+    </div>`
+      : "";
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -178,6 +241,59 @@ export class ReviewWebviewManager {
       border-bottom: 1px solid var(--vscode-widget-border);
       padding-bottom: 4px;
     }
+    .commit-details {
+      margin-top: 24px;
+      padding-top: 16px;
+      border-top: 1px solid var(--vscode-widget-border);
+    }
+    .commit-details h3 {
+      margin: 0 0 8px 0;
+      font-size: 0.95em;
+      color: var(--vscode-editor-foreground);
+    }
+    .commit-message {
+      white-space: pre-wrap;
+      font-family: var(--vscode-editor-font-family);
+      font-size: var(--vscode-editor-font-size);
+      background: var(--vscode-textCodeBlock-background);
+      padding: 12px;
+      border-radius: 4px;
+      margin-bottom: 12px;
+    }
+    .file-list h4 {
+      margin: 0 0 4px 0;
+      font-size: 0.85em;
+      color: var(--vscode-descriptionForeground);
+    }
+    .file-link {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 2px 4px;
+      text-decoration: none;
+      color: var(--vscode-editor-foreground);
+      font-family: var(--vscode-editor-font-family);
+      font-size: var(--vscode-editor-font-size);
+      border-radius: 3px;
+      cursor: pointer;
+    }
+    .file-link:hover {
+      background: var(--vscode-list-hoverBackground);
+    }
+    .file-status {
+      font-weight: bold;
+      font-size: 0.8em;
+      width: 1.2em;
+      text-align: center;
+    }
+    .file-status-A { color: var(--vscode-gitDecoration-addedResourceForeground); }
+    .file-status-D { color: var(--vscode-gitDecoration-deletedResourceForeground); }
+    .file-status-M { color: var(--vscode-gitDecoration-modifiedResourceForeground); }
+    .file-status-R { color: var(--vscode-gitDecoration-renamedResourceForeground); }
+    .file-status-C { color: var(--vscode-gitDecoration-modifiedResourceForeground); }
+    .file-path {
+      color: var(--vscode-textLink-foreground);
+    }
   </style>
 </head>
 <body>
@@ -187,12 +303,14 @@ export class ReviewWebviewManager {
     <span class="header-field"><strong>Branch:</strong> ${job.branch}</span>
     <span class="header-field"><strong>Agent:</strong> ${job.agent}</span>
     <span class="header-field"><strong>Time:</strong> ${job.finished_at ?? job.enqueued_at}</span>
+    <span class="header-field"><strong>Job:</strong> ${escapeHtml(String(review.job_id))}</span>
   </div>
   <div class="actions">
     ${actionButton}
     <button class="btn btn-secondary" onclick="postMessage({ command: 'openTui' })">Open TUI</button>
   </div>
   <div class="output">${outputHtml}</div>
+  ${commitHtml}
   <script>
     const vscode = acquireVsCodeApi();
     function postMessage(msg) {
@@ -202,4 +320,12 @@ export class ReviewWebviewManager {
 </body>
 </html>`;
   }
+}
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }

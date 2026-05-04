@@ -59,10 +59,6 @@ export class ReviewTreeProvider
     this.repoPaths = repoPaths;
   }
 
-  private get multiRepo(): boolean {
-    return this.repoPaths.length > 1;
-  }
-
   async refresh(): Promise<void> {
     try {
       this.available = await this.client.isAvailable();
@@ -155,37 +151,24 @@ export class ReviewTreeProvider
       return [item];
     }
 
-    if (!this.multiRepo) {
-      const repo = this.repos[0];
-      const jobs = repo?.jobs ?? [];
-      if (jobs.length === 0) {
-        const item = new ReviewTreeItem(
-          "No reviews yet",
-          vscode.TreeItemCollapsibleState.None
-        );
-        item.description = repo?.branch
-          ? `on ${repo.branch} — reviews appear after commits`
-          : "Reviews appear after commits";
-        return [item];
-      }
-      return this.buildStatusGroups(jobs);
-    }
-
     return this.repos.map((repo) => {
-      const activeInRepo = repo.jobs.filter((j) => {
-        const g = classifyReview(j);
-        return g === "inProgress" || g === "needsAttention";
-      }).length;
+      const counts: Record<ReviewGroup, number> = {
+        inProgress: 0,
+        needsAttention: 0,
+        passed: 0,
+        history: 0,
+      };
+      for (const job of repo.jobs) {
+        counts[classifyReview(job)]++;
+      }
 
       const prefix = repo.branch ? `${repo.branch} · ` : "";
-      let status: string;
-      if (repo.jobs.length === 0) {
-        status = "no reviews";
-      } else if (activeInRepo > 0) {
-        status = `${repo.jobs.length} reviews, ${activeInRepo} active`;
-      } else {
-        status = `${repo.jobs.length} reviews`;
-      }
+      const parts: string[] = [];
+      if (counts.needsAttention > 0) parts.push(`${counts.needsAttention} attn`);
+      if (counts.passed > 0) parts.push(`${counts.passed} passed`);
+      if (counts.inProgress > 0) parts.push(`${counts.inProgress} running`);
+      if (counts.history > 0) parts.push(`${counts.history} history`);
+      const status = parts.length > 0 ? parts.join(" · ") : "no reviews";
 
       const item = new ReviewTreeItem(
         repo.name,
