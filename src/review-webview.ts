@@ -33,7 +33,7 @@ export class ReviewWebviewManager {
     } else {
       this.panel = vscode.window.createWebviewPanel(
         "roborevReview",
-        "RoboRev",
+        "roborev",
         vscode.ViewColumn.One,
         { enableScripts: true, retainContextWhenHidden: false }
       );
@@ -54,7 +54,7 @@ export class ReviewWebviewManager {
 
     const sha = review.job.git_ref.slice(0, 7);
     const subject = review.job.commit_subject;
-    this.panel.title = `RoboRev: ${sha} — ${subject}`;
+    this.panel.title = `roborev: ${sha} — ${subject}`;
     this.panel.webview.html = this.buildHtml(review);
   }
 

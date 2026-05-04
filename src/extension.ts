@@ -46,7 +46,7 @@ function isGitRepo(dir: string): boolean {
 }
 
 export function activate(context: vscode.ExtensionContext): void {
-  const outputChannel = vscode.window.createOutputChannel("RoboRev");
+  const outputChannel = vscode.window.createOutputChannel("roborev");
   context.subscriptions.push(outputChannel);
 
   const folders = vscode.workspace.workspaceFolders;
@@ -129,14 +129,14 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.commands.registerCommand("roborev.openTui", () => {
       const existingTerminal = vscode.window.terminals.find(
-        (t) => t.name === "RoboRev TUI"
+        (t) => t.name === "roborev TUI"
       );
       if (existingTerminal) {
         existingTerminal.show();
         return;
       }
       const terminal = vscode.window.createTerminal({
-        name: "RoboRev TUI",
+        name: "roborev TUI",
         cwd: folders[0].uri.fsPath,
       });
       terminal.sendText("roborev tui");
