@@ -59,10 +59,6 @@ export class ReviewTreeProvider
     this.repoPaths = repoPaths;
   }
 
-  private get multiRepo(): boolean {
-    return this.repoPaths.length > 1;
-  }
-
   async refresh(): Promise<void> {
     try {
       this.available = await this.client.isAvailable();
@@ -153,22 +149,6 @@ export class ReviewTreeProvider
       );
       item.description = "Open a workspace with git repos";
       return [item];
-    }
-
-    if (!this.multiRepo) {
-      const repo = this.repos[0];
-      const jobs = repo?.jobs ?? [];
-      if (jobs.length === 0) {
-        const item = new ReviewTreeItem(
-          "No reviews yet",
-          vscode.TreeItemCollapsibleState.None
-        );
-        item.description = repo?.branch
-          ? `on ${repo.branch} — reviews appear after commits`
-          : "Reviews appear after commits";
-        return [item];
-      }
-      return this.buildStatusGroups(jobs);
     }
 
     return this.repos.map((repo) => {
