@@ -48,7 +48,8 @@
       },
       {
         "command": "roborev.openTui",
-        "title": "RoboRev: Open TUI"
+        "title": "RoboRev: Open TUI",
+        "icon": "$(terminal)"
       },
       {
         "command": "roborev.showReview",
@@ -57,6 +58,11 @@
     ],
     "menus": {
       "view/title": [
+        {
+          "command": "roborev.openTui",
+          "when": "view == roborevReviews",
+          "group": "navigation"
+        },
         {
           "command": "roborev.refresh",
           "when": "view == roborevReviews",
