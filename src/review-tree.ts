@@ -46,7 +46,7 @@ export class ReviewTreeProvider
     try {
       this.available = await this.client.isAvailable();
       if (!this.available) {
-        this.errorMessage = "RoboRev CLI not found";
+        this.errorMessage = "RoboRev CLI not found — install from github.com/roborev-dev/roborev";
         this.jobs = [];
         this._onDidChangeTreeData.fire();
         return;

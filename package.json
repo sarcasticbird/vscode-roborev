@@ -77,7 +77,13 @@
           "when": "view == roborevReviews && viewItem =~ /^review/"
         }
       ]
-    }
+    },
+    "viewsWelcome": [
+      {
+        "view": "roborevReviews",
+        "contents": "No RoboRev reviews found.\n\nRun `roborev init` in your project to enable automatic code reviews.\n\n[Open Terminal](command:workbench.action.terminal.new)"
+      }
+    ]
   },
   "scripts": {
     "build": "node esbuild.config.mjs",
