@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import * as path from "node:path";
 import * as fs from "node:fs";
 import { RoboRevClient } from "./roborev-client.js";
+import { GitContentProvider, GIT_SCHEME } from "./git-content-provider.js";
 import { ReviewTreeProvider } from "./review-tree.js";
 import { ReviewWebviewManager } from "./review-webview.js";
 
@@ -57,6 +58,12 @@ export function activate(context: vscode.ExtensionContext): void {
   const repoPaths = discoverRepos(folders, outputChannel);
 
   const client = new RoboRevClient(outputChannel);
+
+  const gitContentProvider = new GitContentProvider(client);
+  context.subscriptions.push(
+    vscode.workspace.registerTextDocumentContentProvider(GIT_SCHEME, gitContentProvider)
+  );
+
   const treeProvider = new ReviewTreeProvider(client, repoPaths);
 
   const treeView = vscode.window.createTreeView("roborevReviews", {
