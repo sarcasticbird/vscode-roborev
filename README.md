@@ -4,6 +4,8 @@ See your [RoboRev](https://github.com/roborev-dev/roborev) code review findings 
 
 RoboRev is an automated code review system that reviews every commit you make using AI agents like Claude Code and Gemini. It catches bugs, security issues, and code quality problems before they ever reach a PR. This extension brings those findings into your editor where you're already working.
 
+<img width="511" height="383" alt="image" src="https://github.com/user-attachments/assets/3d6a061f-7485-43c8-b3c3-f7d784e36c8e" />
+
 ## What You Get
 
 **Sidebar tree view** — all reviews for your current project, grouped by status:
