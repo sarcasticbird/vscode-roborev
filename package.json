@@ -11,7 +11,7 @@
     "Other"
   ],
   "activationEvents": [
-    "workspaceContains:.roborev-id"
+    "onStartupFinished"
   ],
   "main": "./dist/extension.js",
   "contributes": {
