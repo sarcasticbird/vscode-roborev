@@ -57,6 +57,17 @@ It's the fastest way to get a second pair of eyes on your code. Every commit. Ev
 | `RoboRev: Reopen Review` | Reopen a previously resolved finding |
 | `RoboRev: Open TUI` | Launch `roborev tui` in an integrated terminal |
 
+## Install
+
+Download the latest `.vsix` from [GitHub Releases](https://github.com/sarcasticbird/vscode-roborev/releases) and install:
+
+```bash
+gh release download v0.1.0 --repo sarcasticbird/vscode-roborev
+code --install-extension vscode-roborev-0.1.0.vsix
+```
+
+Or install directly in VS Code: `Cmd+Shift+P` → "Extensions: Install from VSIX..." and select the downloaded file.
+
 ## Getting Started
 
 1. Install [RoboRev](https://github.com/roborev-dev/roborev):
