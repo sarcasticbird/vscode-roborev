@@ -59,6 +59,10 @@ export class ReviewTreeProvider
     this.repoPaths = repoPaths;
   }
 
+  updateRepoPaths(repoPaths: { name: string; path: string }[]): void {
+    this.repoPaths = repoPaths;
+  }
+
   async refresh(): Promise<void> {
     try {
       this.available = await this.client.isAvailable();

@@ -50,19 +50,17 @@ export function activate(context: vscode.ExtensionContext): void {
   const outputChannel = vscode.window.createOutputChannel("roborev");
   context.subscriptions.push(outputChannel);
 
-  const folders = vscode.workspace.workspaceFolders;
-  if (!folders || folders.length === 0) {
-    return;
-  }
-
-  const repoPaths = discoverRepos(folders, outputChannel);
-
   const client = new RoboRevClient(outputChannel);
 
   const gitContentProvider = new GitContentProvider(client);
   context.subscriptions.push(
     vscode.workspace.registerTextDocumentContentProvider(GIT_SCHEME, gitContentProvider)
   );
+
+  const initialFolders = vscode.workspace.workspaceFolders ?? [];
+  const repoPaths = initialFolders.length > 0
+    ? discoverRepos(initialFolders, outputChannel)
+    : [];
 
   const treeProvider = new ReviewTreeProvider(client, repoPaths);
 
@@ -78,6 +76,22 @@ export function activate(context: vscode.ExtensionContext): void {
       ? { value: count, tooltip: `${count} review${count === 1 ? "" : "s"} need attention` }
       : undefined;
   };
+
+  const rediscoverRepos = async () => {
+    const folders = vscode.workspace.workspaceFolders;
+    const newPaths = folders && folders.length > 0
+      ? discoverRepos(folders, outputChannel)
+      : [];
+    treeProvider.updateRepoPaths(newPaths);
+    await treeProvider.refresh();
+    updateBadge();
+  };
+
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeWorkspaceFolders(() => {
+      rediscoverRepos().catch(err => outputChannel.appendLine(`rediscoverRepos failed: ${err}`));
+    })
+  );
 
   const webviewManager = new ReviewWebviewManager(
     client,
@@ -142,9 +156,11 @@ export function activate(context: vscode.ExtensionContext): void {
         existingTerminal.show();
         return;
       }
+      const folders = vscode.workspace.workspaceFolders;
+      const cwd = folders?.[0]?.uri.fsPath;
       const terminal = vscode.window.createTerminal({
         name: "roborev TUI",
-        cwd: folders[0].uri.fsPath,
+        ...(cwd ? { cwd } : {}),
       });
       terminal.sendText("roborev tui");
       terminal.show();
@@ -180,7 +196,9 @@ export function activate(context: vscode.ExtensionContext): void {
   schedulePoll();
   context.subscriptions.push({ dispose: () => { pollDisposed = true; clearTimeout(pollTimer); } });
 
-  treeProvider.refresh().then(updateBadge);
+  if (initialFolders.length > 0) {
+    treeProvider.refresh().then(updateBadge);
+  }
 }
 
 export function deactivate(): void {
