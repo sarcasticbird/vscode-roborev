@@ -4,11 +4,29 @@
   "description": "roborev code review findings in VS Code",
   "version": "0.2.1",
   "publisher": "sarcasticbird",
+  "icon": "media/roborev-icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sarcasticbird/vscode-roborev"
+  },
+  "homepage": "https://github.com/sarcasticbird/vscode-roborev#readme",
+  "bugs": {
+    "url": "https://github.com/sarcasticbird/vscode-roborev/issues"
+  },
+  "license": "MIT",
   "engines": {
     "vscode": "^1.85.0"
   },
   "categories": [
+    "Linters",
     "Other"
+  ],
+  "keywords": [
+    "code review",
+    "roborev",
+    "ai",
+    "linting",
+    "automated review"
   ],
   "activationEvents": [
     "onStartupFinished"

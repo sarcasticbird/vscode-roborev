@@ -3,5 +3,7 @@ docs/**
 node_modules/**
 .flox/**
 .git/**
+.vscode/**
 tsconfig.json
 esbuild.config.mjs
+*.vsix
