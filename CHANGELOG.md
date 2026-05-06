@@ -1,8 +1,9 @@
 # Changelog
 
-## 0.2.1
+## 0.3.0
 
 - Fix: rediscover repos when workspace folders are added or removed
+- Prep for VS Code marketplace publishing
 
 ## 0.2.0
 
