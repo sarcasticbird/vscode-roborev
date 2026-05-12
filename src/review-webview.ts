@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { marked } from "marked";
 import type { RoboRevClient } from "./roborev-client.js";
 import type { ReviewShowResponse, ChangedFile } from "./types.js";
+import { isRangeRef, parseRange, shortRef } from "./types.js";
 import { buildGitUri } from "./git-content-provider.js";
 
 export class ReviewWebviewManager {
@@ -65,23 +66,25 @@ export class ReviewWebviewManager {
         }
         if (msg.command === "openDiff") {
           const { repoPath, sha, filePath, oldPath, status } = msg;
-          const parentSha = `${sha}~1`;
+          const range = parseRange(sha);
+          const beforeRef = range ? range.start : `${sha}~1`;
+          const afterRef = range ? range.end : sha;
           const leftPath = oldPath ?? filePath;
           const leftUri = status === "A"
             ? buildGitUri(repoPath, "empty", filePath)
-            : buildGitUri(repoPath, parentSha, leftPath);
+            : buildGitUri(repoPath, beforeRef, leftPath);
           const rightUri = status === "D"
             ? buildGitUri(repoPath, "empty", filePath)
-            : buildGitUri(repoPath, sha, filePath);
+            : buildGitUri(repoPath, afterRef, filePath);
           const basename = filePath.split("/").pop() ?? filePath;
-          vscode.commands.executeCommand("vscode.diff", leftUri, rightUri, `${basename} (${sha.slice(0, 7)})`);
+          vscode.commands.executeCommand("vscode.diff", leftUri, rightUri, `${basename} (${shortRef(sha)})`);
         }
       });
     }
 
-    const sha = review.job.git_ref.slice(0, 7);
-    const subject = review.job.commit_subject;
-    this.panel.title = `roborev: ${sha} — ${subject}`;
+    const ref = shortRef(review.job.git_ref);
+    const subject = review.job.commit_subject || review.job.branch;
+    this.panel.title = `roborev: ${ref} — ${subject}`;
     this.panel.webview.html = this.buildHtml(review, commitDetails, changedFiles);
   }
 
@@ -95,7 +98,8 @@ export class ReviewWebviewManager {
     changedFiles: ChangedFile[] = []
   ): string {
     const job = review.job;
-    const fullSha = job.git_ref;
+    const isRange = isRangeRef(job.git_ref);
+    const refDisplay = isRange ? shortRef(job.git_ref) : job.git_ref.slice(0, 12);
     const verdictLabel = review.closed
       ? "Resolved"
       : review.verdict_bool === 1
@@ -141,9 +145,10 @@ export class ReviewWebviewManager {
       </div>`
       : "";
 
+    const detailsHeading = isRange ? "Commit Range" : "Commit Details";
     const commitHtml = commitDetails || fileListHtml
       ? `<div class="commit-details">
-      <h3>Commit Details</h3>
+      <h3>${detailsHeading}</h3>
       ${commitDetails ? `<div class="commit-message">${escapeHtml(commitDetails.message)}</div>` : ""}
       ${fileListHtml}
     </div>`
@@ -299,7 +304,7 @@ export class ReviewWebviewManager {
 <body>
   <div class="header">
     <span class="verdict ${verdictClass}">${verdictLabel}</span>
-    <span class="header-field"><strong>SHA:</strong> ${fullSha.slice(0, 12)}</span>
+    <span class="header-field"><strong>${isRange ? "Range" : "SHA"}:</strong> ${refDisplay}</span>
     <span class="header-field"><strong>Branch:</strong> ${job.branch}</span>
     <span class="header-field"><strong>Agent:</strong> ${job.agent}</span>
     <span class="header-field"><strong>Time:</strong> ${job.finished_at ?? job.enqueued_at}</span>

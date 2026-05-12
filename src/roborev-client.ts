@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import * as vscode from "vscode";
 import type { ReviewJob, ReviewShowResponse, ChangedFile } from "./types.js";
+import { isRangeRef, parseRange } from "./types.js";
 
 const HOMEBREW_PATHS = [
   "/opt/homebrew/bin/roborev",
@@ -121,10 +122,14 @@ export class RoboRevClient {
   }
 
   gitDiffTree(repoPath: string, sha: string): Promise<ChangedFile[]> {
+    const args = isRangeRef(sha)
+      ? ["-C", repoPath, "diff", "--name-status", sha]
+      : ["-C", repoPath, "diff-tree", "--no-commit-id", "-r", "--name-status", sha];
+
     return new Promise((resolve) => {
       execFile(
         "git",
-        ["-C", repoPath, "diff-tree", "--no-commit-id", "-r", "--name-status", sha],
+        args,
         { timeout: 5_000 },
         (error, stdout) => {
           if (error) {
@@ -157,10 +162,11 @@ export class RoboRevClient {
   }
 
   gitShowFile(repoPath: string, sha: string, filePath: string): Promise<string> {
+    const ref = parseRange(sha)?.end ?? sha;
     return new Promise((resolve) => {
       execFile(
         "git",
-        ["-C", repoPath, "show", `${sha}:${filePath}`],
+        ["-C", repoPath, "show", `${ref}:${filePath}`],
         { timeout: 5_000, maxBuffer: 5 * 1024 * 1024 },
         (error, stdout) => {
           if (error) {
@@ -174,6 +180,23 @@ export class RoboRevClient {
   }
 
   gitCommitDetails(repoPath: string, sha: string): Promise<{ message: string; diffstat: string }> {
+    if (isRangeRef(sha)) {
+      return new Promise((resolve) => {
+        execFile(
+          "git",
+          ["-C", repoPath, "log", "--stat", "--format=%s", sha],
+          { timeout: 5_000 },
+          (error, stdout) => {
+            if (error) {
+              resolve({ message: "", diffstat: "" });
+              return;
+            }
+            resolve({ message: stdout.trim(), diffstat: "" });
+          }
+        );
+      });
+    }
+
     return new Promise((resolve) => {
       execFile(
         "git",

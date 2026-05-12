@@ -93,3 +93,19 @@ export interface ChangedFile {
   path: string;
   oldPath?: string;
 }
+
+export function isRangeRef(ref: string): boolean {
+  return ref.includes("..");
+}
+
+export function parseRange(ref: string): { start: string; end: string } | null {
+  const sep = ref.indexOf("..");
+  if (sep === -1) return null;
+  return { start: ref.slice(0, sep), end: ref.slice(sep + 2) };
+}
+
+export function shortRef(ref: string): string {
+  const range = parseRange(ref);
+  if (range) return `${range.start.slice(0, 7)}..${range.end.slice(0, 7)}`;
+  return ref.slice(0, 7);
+}
