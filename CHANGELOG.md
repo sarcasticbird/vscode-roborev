@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1
+
+- Fix: support range/branch reviews (tree labels, webview, diffs, file listing)
+
 ## 0.3.0
 
 - Fix: rediscover repos when workspace folders are added or removed

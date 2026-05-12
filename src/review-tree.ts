@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import type { RoboRevClient } from "./roborev-client.js";
-import { type ReviewJob, type ReviewGroup, classifyReview } from "./types.js";
+import { type ReviewJob, type ReviewGroup, classifyReview, shortRef, isRangeRef } from "./types.js";
 
 const GROUP_LABELS: Record<ReviewGroup, string> = {
   inProgress: "In Progress",
@@ -222,22 +222,27 @@ export class ReviewTreeProvider
     return jobs
       .filter((j) => classifyReview(j) === group)
       .map((job) => {
-        const sha = job.git_ref.slice(0, 7);
-        const subject =
-          job.commit_subject.length > 50
+        const ref = shortRef(job.git_ref);
+        const subject = job.commit_subject
+          ? job.commit_subject.length > 50
             ? job.commit_subject.slice(0, 47) + "..."
-            : job.commit_subject;
+            : job.commit_subject
+          : job.branch;
 
         const item = new ReviewTreeItem(
-          `${sha} — ${subject}`,
+          `${ref} — ${subject}`,
           vscode.TreeItemCollapsibleState.None
         );
         item.description = `${job.agent}  ${relativeTime(job.enqueued_at)}`;
-        item.tooltip = new vscode.MarkdownString(
-          `**Branch:** ${job.branch}\n\n` +
-            `**Commit:** ${job.commit_subject}\n\n` +
-            `**Type:** ${job.job_type} (${job.review_type})`
-        );
+
+        const tooltipLines = [`**Branch:** ${job.branch}`];
+        if (isRangeRef(job.git_ref)) {
+          tooltipLines.push(`**Range:** ${job.git_ref}`);
+        } else {
+          tooltipLines.push(`**Commit:** ${job.commit_subject}`);
+        }
+        tooltipLines.push(`**Type:** ${job.job_type} (${job.review_type})`);
+        item.tooltip = new vscode.MarkdownString(tooltipLines.join("\n\n"));
         item.jobId = job.id;
 
         item.contextValue = job.closed ? "reviewClosed" : "reviewOpen";
